@@ -1,0 +1,59 @@
+import numpy as np
+import pandas as pd
+from scipy import optimize
+
+def cal_uct(arr):
+    def my_fun(r):
+        f = 0
+        for j in range(0, len(S)):
+            f = f + np.power(r[j], 2)
+            for k in range(0, len(S)):
+                if j < k:
+                    f = np.power((S[j, k] - r[len(S)] + r[j] + r[k]), 2) + f
+        K = np.linalg.det(S)
+        F = f / np.power(K, 2 * len(S))
+        return F
+
+    M, N = np.shape(arr)
+
+    ref_arr = arr[:, N - 1]
+    tar_arr = arr[:, 0:N - 1]
+
+    Y = tar_arr - np.repeat(np.reshape(ref_arr, (M, 1)), N - 1, axis=1)
+
+    S = np.cov(Y.T)
+    u = np.ones((1, N - 1))
+
+    R = np.zeros((N, N))
+    R[N - 1, N - 1] = 1 / (2 * np.dot(np.dot(u, np.linalg.inv(S)), u.T))
+
+    # initializing conditions
+    x0 = R[:, N - 1]
+
+    # define constraints
+    u_ = np.ones((1, len(S)))
+    det_S = np.linalg.det(S)
+    inv_S = np.linalg.inv(S)
+    Denominator = np.power(det_S, 2 / len(S))
+
+    cons = {'type': 'ineq', 'fun': lambda r: (r[len(S)] - np.dot(
+        np.dot(np.reshape(r[0:-1], (1, len(r) - 1)) - r[len(S)] * u_, inv_S),
+        (np.reshape(r[0:-1], (1, len(r) - 1)) - r[len(S)] * u_).T)) / Denominator}
+
+    x = optimize.minimize(my_fun, x0, method='COBYLA', tol=2e-10, constraints=cons)
+
+    R[:, N - 1] = x.x
+
+    for ii in range(0, N - 1):
+        for jj in range(0, N - 1):
+            if ii < jj or ii == jj:
+                R[ii, jj] = S[ii, jj] - R[N - 1, N - 1] + R[ii, N - 1] + R[jj, N - 1]
+    R += R.T - np.diag(R.diagonal())
+    for ii in range(0, N):
+        for jj in range(0, N):
+            R[jj, ii] = R[ii, jj]
+
+    uct = np.sqrt(R.diagonal())  # uncertainty
+    r_uct = uct / np.mean(abs(arr), axis=0) * 100  # relative uncertainty
+
+    return uct, r_uct
